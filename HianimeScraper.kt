@@ -10,12 +10,15 @@ import java.util.Base64
 
 class HianimeScraper(
     private val config: HianimeConfig = HianimeConfig(),
-    private val httpClient: HianimeHttpClient = DefaultHianimeHttpClient(config.userAgent),
+    private val httpClient: HianimeHttpClient = DefaultHianimeHttpClient(
+        userAgent = config.userAgent,
+        allowedRedirectHosts = config.allowedRedirectHosts,
+    ),
 ) {
     suspend fun search(query: String): List<AnimeSearchResult> {
         val encoded = URLEncoder.encode(query, StandardCharsets.UTF_8)
         val url = config.searchEndpoint.format(encoded)
-        val page = httpClient.get(url)
+        val page = fetch(url)
         val document = Jsoup.parse(page, config.baseUrl)
 
         return document
@@ -48,7 +51,7 @@ class HianimeScraper(
     suspend fun episodes(animeSlug: String): List<EpisodeInfo> {
         val slugSuffix = animeSlug.substringAfterLast('-')
         val endpoint = config.episodesEndpoint.format(slugSuffix)
-        val responseBody = httpClient.get(endpoint)
+        val responseBody = fetch(endpoint)
         val episodeHtml = extractHtmlPayload(responseBody)
             ?: throw HianimeParseException("Could not find episode list HTML")
 
@@ -78,8 +81,11 @@ class HianimeScraper(
         qualityPreference: String = "best",
     ): EpisodeStream {
         val servers = serversForEpisode(episodeId)
-        val selectedServer = servers
-            .firstOrNull { it.type == mode && it.serverName.equals("ZokoAnime", ignoreCase = true) }
+        val preferredServer = config.preferredServerNames
+            .firstNotNullOfOrNull { preferred ->
+                servers.firstOrNull { it.type == mode && it.serverName.equals(preferred, ignoreCase = true) }
+            }
+        val selectedServer = preferredServer
             ?: servers.firstOrNull { it.type == mode }
             ?: throw HianimeNotFoundException("No servers available for mode=$mode")
 
@@ -87,7 +93,7 @@ class HianimeScraper(
             ?: throw HianimeParseException("Could not decode server hash to embed URL")
         val referer = extractOrigin(embedUrl)
 
-        val embedPage = httpClient.get(embedUrl)
+        val embedPage = fetch(embedUrl)
         val payloadBlob = extractWindowPayload(embedPage)
             ?: throw HianimeParseException("window.__P payload not found in embed page")
 
@@ -99,7 +105,7 @@ class HianimeScraper(
 
         val subtitles = extractSubtitleTracks(payloadJson)
 
-        val playlist = httpClient.get(masterUrl, mapOf("Referer" to referer))
+        val playlist = fetch(masterUrl, mapOf("Referer" to referer))
         val variants = parseMasterPlaylist(masterUrl, playlist)
         if (variants.isEmpty()) {
             throw HianimeNotFoundException("No quality variants found in master playlist")
@@ -122,7 +128,7 @@ class HianimeScraper(
 
     suspend fun serversForEpisode(episodeId: String): List<EpisodeServer> {
         val url = config.serversEndpoint.format(episodeId)
-        val responseBody = httpClient.get(url)
+        val responseBody = fetch(url)
         val serversHtml = extractHtmlPayload(responseBody)
             ?: throw HianimeParseException("Could not find server list HTML")
 
@@ -295,5 +301,22 @@ class HianimeScraper(
         String(Base64.getDecoder().decode(value), Charsets.UTF_8)
     } catch (_: IllegalArgumentException) {
         null
+    }
+
+    private suspend fun fetch(url: String, headers: Map<String, String> = emptyMap()): String {
+        val body = httpClient.get(url, headers)
+        if (looksLikeSecurityBlockPage(body)) {
+            val host = runCatching { URI(url).host }.getOrNull().orEmpty()
+            throw HianimeUpstreamBlockedException(url, 200, "Upstream host $host returned a security-block page")
+        }
+        return body
+    }
+
+    private fun looksLikeSecurityBlockPage(body: String): Boolean {
+        val normalized = body.lowercase()
+        return normalized.contains("sorry, you have been blocked") ||
+            normalized.contains("you are unable to access") ||
+            normalized.contains("cloudflare ray id") ||
+            normalized.contains("security service to protect itself from online attacks")
     }
 }

@@ -18,6 +18,16 @@ HiAnime scraper plugin prototype for Cloudstream.
 
 Quality preference accepts `best`, `worst`, or an explicit value like `720p`. If unavailable, it falls back to the best variant.
 
+## Upstream blocking and redirects
+
+Some upstream embed hosts (for example `nexabloom.top`) may return Cloudflare/security block pages or HTTP block statuses instead of stream metadata.
+
+- The scraper now throws `HianimeUpstreamBlockedException` for blocked statuses (`403`, `429`, `503`) and for detected security-block HTML bodies.
+- Redirects are not followed blindly. Cross-host redirects are rejected unless the destination host is explicitly configured in `HianimeConfig.allowedRedirectHosts`.
+- Preferred server names are configurable through `HianimeConfig.preferredServerNames` (default includes `ZokoAnime`).
+
+If one configured source is blocked, switch to another configured provider/source instead of expecting universal live playback from a single upstream host.
+
 ## Cloudstream provider usage
 
 The provider (`MoescrapperProvider`) now uses `HianimeScraper` for:
