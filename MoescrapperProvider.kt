@@ -8,7 +8,7 @@ import com.lagradost.cloudstream3.utils.Qualities
 
 class MoescrapperProvider : MainAPI() {
     override var mainUrl = "https://hianime.at"
-    override var name = "Moescrapper"
+    override var name = "HiAnime API"
     override val supportedTypes = setOf(TvType.Anime)
     override var hasMainPage = false
 
