@@ -8,10 +8,15 @@ enum class StreamMode {
 data class HianimeConfig(
     val baseUrl: String = "https://hianime.at",
     val userAgent: String = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+    val searchEndpointTemplate: String = "%s/search?keyword=%%s",
+    val episodesEndpointTemplate: String = "%s/api/theme/episode/list/%%s",
+    val serversEndpointTemplate: String = "%s/api/theme/episode/servers?episodeId=%%s",
+    val preferredServerNames: List<String> = listOf("ZokoAnime"),
+    val allowedRedirectHosts: Set<String> = emptySet(),
 ) {
-    val searchEndpoint: String = "$baseUrl/search?keyword=%s"
-    val episodesEndpoint: String = "$baseUrl/api/theme/episode/list/%s"
-    val serversEndpoint: String = "$baseUrl/api/theme/episode/servers?episodeId=%s"
+    val searchEndpoint: String = searchEndpointTemplate.format(baseUrl.trimEnd('/'))
+    val episodesEndpoint: String = episodesEndpointTemplate.format(baseUrl.trimEnd('/'))
+    val serversEndpoint: String = serversEndpointTemplate.format(baseUrl.trimEnd('/'))
 }
 
 data class AnimeSearchResult(

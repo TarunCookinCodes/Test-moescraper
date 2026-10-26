@@ -9,6 +9,7 @@ import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.startCoroutine
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -74,6 +75,37 @@ class HianimeScraperTest {
         assertEquals("https://embed.example/", stream720.referer)
         assertTrue(stream720.variants.size >= 3)
         assertNotNull(stream720.subtitles.firstOrNull())
+    }
+
+    @Test
+    fun `streamForEpisode throws blocked exception for cloudflare page`() {
+        val episodeId = "123"
+        val blockedEmbedUrl = "https://nexabloom.top/e/blocked"
+        val hash = Base64.getEncoder().encodeToString(blockedEmbedUrl.toByteArray())
+        val serversResponse = """{"html":"<div class=\\"server-item\\" data-type=\\"sub\\" data-server-name=\\"ZokoAnime\\" data-hash=\\"$hash\\"></div>"}"""
+        val blockedPage = """
+            <html><body>
+            <h1>Sorry, you have been blocked</h1>
+            <p>You are unable to access nexabloom.top</p>
+            <p>Cloudflare Ray ID: 1234567890abcdef</p>
+            </body></html>
+        """.trimIndent()
+
+        val scraper = HianimeScraper(
+            config = config,
+            httpClient = FakeHttpClient(
+                mapOf(
+                    config.serversEndpoint.format(episodeId) to serversResponse,
+                    blockedEmbedUrl to blockedPage,
+                ),
+            ),
+        )
+
+        val error = assertFailsWith<HianimeUpstreamBlockedException> {
+            runSuspend { scraper.streamForEpisode(episodeId, StreamMode.SUB, "best") }
+        }
+        assertTrue(error.message.orEmpty().contains("blocked", ignoreCase = true))
+        assertTrue(error.message.orEmpty().contains("provider/source", ignoreCase = true))
     }
 
     private fun obfuscatePayload(input: String): String {
